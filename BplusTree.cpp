@@ -60,7 +60,6 @@ class Btree
                 push_up(page* new_page, int push_key, Btree* btree);
                 pop_down(page* empty_page, page* merge_page, Btree* btree);
                 int key_index_between_ptr(page* x_page, page* y_page);
-                redistribute(page* left_page, int replace_key);
         };
 
         // --------------------------------------------------------- //
@@ -333,7 +332,8 @@ Btree::Lookup(int value)
 
 
 
-Btree::page::page(){
+Btree::page::page()
+{
    // page_size = 4;
     parent = nullptr;
     pre_page = nullptr;
@@ -363,8 +363,8 @@ int Btree::page::pop(int value)
     return -1;
 }
 
-Btree::page::show(){
-
+Btree::page::show()
+{
     if (page_type == "index"){
         cout << "Index Page" << endl;
     }else if (page_type == "leaf"){
@@ -413,48 +413,80 @@ Btree::index_page::~index_page()
 Btree::index_page::push_up(page* new_page, int push_key, Btree* btree)
 {
     int page_size = btree->page_size;
+    index_page *myparent = dynamic_cast<index_page*>(parent);  // 將父節點轉換成路標節點型態
+
     int position = push(push_key); // 將key放入此路標節點，並回傳放入的index
     vector<page*>::iterator itr = ptr.begin();
-    itr = ptr.insert(itr + position + 1, new_page);
+    itr = ptr.insert(itr + position + 1, new_page); // 將子節點的pointer 放入適當的位置
 
-    if (key.size() > page_size){ // 檢查父節點是否超過容量
+    if (key.size() > page_size){ // 檢查此節點是否超過容量
 
         cout << "\noverflow ! Index page size: " << key.size() << "\n" <<endl;
-        index_page* temp = new index_page; // 新增路標節點
-        temp->parent = parent;             // 設定新節點之父節點指標
-        temp->pre_page = this;             // 設定新節點隻左節點指標
-        temp->next_page = next_page;       // 設定新節點隻右節點指標
-        if (next_page != nullptr)
-            next_page->pre_page = temp;    // 設定舊節點之右邊節點的左節點指標
-        next_page = temp;                  // 設定舊節點之右節點指標
-        temp->key.assign(key.begin() + page_size/2, key.end());
-        key.erase(key.begin() + page_size/2, key.end());
-        temp->ptr.assign(ptr.begin() + page_size/2 + 1, ptr.end());
-        ptr.erase(ptr.begin() + page_size/2 + 1, ptr.end());
 
-        for(int i=0 ; i<temp->ptr.size() ; i++) // 新增的路標節點 其子節點的parent 為該路標節點
-            temp->ptr[i]->parent = temp;
+        if (pre_page != nullptr && pre_page->parent == parent && pre_page->key.size() < page_size){
+
+            cout << "Left index page is sibling" <<  endl;
+            cout << "throw a key and a pointer to left index page" << endl;
+            index_page *left_page = dynamic_cast<index_page*>(pre_page);
+
+            position = myparent->key_index_between_ptr(left_page, this);  // 取得父節點中 兩指標間key的index
+            left_page->key.push_back(myparent->key[position]);            // 將父節點中 兩指標間的key 放入 左節點最後面的key位置
+            left_page->ptr.push_back(ptr[0]);          // 將自己最前面的pointer 放入 左節點的最後面ptr位置
+            myparent->key[position] = key[0];          // 將父節點中 兩指標間的key值 替換成 自己的第一個key值
+            key.erase(key.begin(), key.begin()+1);     // 移除自己的第一個key
+            ptr.erase(ptr.begin(), ptr.begin()+1);     // 移除自己的第一個pointer
+            left_page->ptr.back()->parent = left_page; // 更新移動過後的pointer指向的節點 其父節點指標
         
-        if (parent == nullptr){ // 本身為root層 需新增起始節點 //
+        // 判斷右節點存在且為兄弟 並且有空間可以多塞一個key //
+        } else if (next_page != nullptr && next_page->parent == parent && next_page->key.size() < page_size){
 
-            cout << "Create new root page" << endl;
-            index_page *temp_root = new index_page;
-            temp_root->push(temp->key[0]);
-            temp_root->ptr.push_back(this);
-            temp_root->ptr.push_back(temp);
-            parent = temp_root;
-            temp->parent = temp_root;
-            btree->root = temp_root;
+            cout << "Right leaf page is sibling" <<  endl;
+            cout << "throw a key to right leaf page" << endl;
+            index_page *right_page = dynamic_cast<index_page*>(next_page);
 
-        } else { // 上層有父節點 //
+            position = myparent->key_index_between_ptr(this, right_page);             // 取得父節點中 兩指標間key的index
+            right_page->key.insert(right_page->key.begin(), myparent->key[position]); // 將父節點中 兩指標間的key 插入 右節點最前面的key位置
+            right_page->ptr.insert(right_page->ptr.begin(), ptr.back());              // 將自己最後面的pointer 插入 右節點最前面的ptr位置
+            myparent->key[position] = key.back();                                     // 將父節點中 兩指標間的key值 替換成 自己的最後一個key值
+            key.pop_back();                           // 移除自己的最後一個key
+            ptr.pop_back();                           // 移除自己的最後一個pointer
+            right_page->ptr[0]->parent = right_page;  // 更新移動過後的pointer指向的節點 其父節點指標
+        
+        } else {  // 左右都無兄弟可以多塞一個key  只能分裂這個路標節點 //
 
-            index_page *myparent = dynamic_cast<index_page*>(parent);  // 將父節點轉換成路標節點型態
-            myparent->push_up(temp, temp->key[0], btree);
+            index_page* temp = new index_page; // 新增路標節點
+            temp->parent = parent;             // 設定新節點之父節點指標
+            temp->pre_page = this;             // 設定新節點隻左節點指標
+            temp->next_page = next_page;       // 設定新節點隻右節點指標
+            if (next_page != nullptr)
+                next_page->pre_page = temp;    // 設定舊節點之右邊節點的左節點指標
+            next_page = temp;                  // 設定舊節點之右節點指標
+            temp->key.assign(key.begin() + page_size/2, key.end());
+            key.erase(key.begin() + page_size/2, key.end());
+            temp->ptr.assign(ptr.begin() + page_size/2 + 1, ptr.end());
+            ptr.erase(ptr.begin() + page_size/2 + 1, ptr.end());
+
+            for(int i=0 ; i<temp->ptr.size() ; i++) // 新增的路標節點 其子節點的parent 為該路標節點
+                temp->ptr[i]->parent = temp;
+            
+            if (myparent == nullptr){ // 本身為root層 需新增起始節點 //
+
+                cout << "Create new root page" << endl;
+                index_page *temp_root = new index_page;
+                temp_root->push(temp->key[0]);
+                temp_root->ptr.push_back(this);
+                temp_root->ptr.push_back(temp);
+                parent = temp_root;
+                temp->parent = temp_root;
+                btree->root = temp_root;
+
+            } else { // 上層有父節點 //
+                myparent->push_up(temp, temp->key[0], btree);
+            }
+            temp->key.erase(temp->key.begin(), temp->key.begin()+1); // 移除新增節點的第一個key 因為被往上移了
         }
-        temp->key.erase(temp->key.begin(), temp->key.begin()+1); // 移除新增節點的第一個key 因為被往上移了
     }
 }
-
 
 Btree::index_page::pop_down(page* empty_page, page* merge_page, Btree* btree)
 {
@@ -579,8 +611,6 @@ Btree::index_page::pop_down(page* empty_page, page* merge_page, Btree* btree)
     }
 }
 
-
-
 int Btree::index_page::key_index_between_ptr(page* x_page, page* y_page)
 {
     for(int i=0 ; i<key.size() ; i++){
@@ -590,21 +620,6 @@ int Btree::index_page::key_index_between_ptr(page* x_page, page* y_page)
     cout << "Error! No key value between given pointer\n" << endl;
     return -1;
 }
-
-Btree::index_page::redistribute(page* left_page, int replace_key)
-{
-    for(int i=0 ; i<key.size() ; i++){
-        if (ptr[i] == left_page){
-            key[i] = replace_key;
-            cout << "Redistribute Success!" << endl;
-            break;
-        }
-    }
-}
-
-
-
-
 
 
 
@@ -638,46 +653,70 @@ Btree::leaf_page::~leaf_page()
     }
 }
 
-
 Btree::leaf_page::overflow(Btree* btree)
 {
+    int position;
     int page_size = btree->page_size;
+    index_page *myparent = dynamic_cast<index_page*>(parent); // 將父節點轉換成路標節點型態
 
-    if ()
+    // 判斷左節點存在且為兄弟 並且有空間可以多塞一個key //
+    if (pre_page != nullptr && pre_page->parent == parent && pre_page->key.size() < page_size){
 
-    leaf_page *temp = new leaf_page;// 新增一個資料節點
-    temp->parent = parent;          // 設定新節點的父節點指標
-    temp->pre_page = this;          // 設定新節點的左節點指標
-    temp->next_page = next_page;    // 設定新節點的右節點指標
-    if (next_page != nullptr)
-        next_page->pre_page = temp; // 設定右邊節點的左節點指標
-    next_page = temp;               // 設定右節點指標
-    
-    temp->key.assign(key.begin() + page_size/2, key.end());
-    key.erase(key.begin() + page_size/2, key.end());
+        cout << "Left leaf page is sibling" <<  endl;
+        cout << "throw a key to left leaf page" << endl;
+        leaf_page *left_page = dynamic_cast<leaf_page*>(pre_page);
 
-    // 無父節點 本身就是root層 需新增起始節點 //
-    if (parent == nullptr){        
+        left_page->key.push_back(key[0]);       // 將自己的第一個key 放入 左節點的最後面
+        key.erase(key.begin(), key.begin()+1);  // 移除自己的第一個key
+        position = myparent->key_index_between_ptr(left_page, this);
+        myparent->key[position] = key[0];
 
-        cout << "Create new root page" << endl;
-        index_page *temp_root = new index_page;
-        temp_root->push(temp->key[0]);
-        temp_root->ptr.push_back(this);
-        temp_root->ptr.push_back(temp);
-        parent = temp_root;
-        temp->parent = temp_root;
-        btree->root = temp_root;
+    // 判斷右節點存在且為兄弟 並且有空間可以多塞一個key //
+    } else if (next_page != nullptr && next_page->parent == parent && next_page->key.size() < page_size){
 
-    } else {  // 具有父節點 //
+        cout << "Right leaf page is sibling" <<  endl;
+        cout << "throw a key to right leaf page" << endl;
+        leaf_page *right_page = dynamic_cast<leaf_page*>(next_page);
 
-        index_page *myparent = dynamic_cast<index_page*>(parent);  // 將父節點轉換成路標節點型態
-        myparent->push_up(temp, temp->key[0], btree);
+        right_page->key.insert(right_page->key.begin(), key.back()); // 將自己的最後面的key 放入 右節點的第一個位置
+        key.pop_back();                                              // 移除自己最後面的key
+        position = myparent->key_index_between_ptr(this, right_page);
+        myparent->key[position] = right_page->key[0];
+
+    } else {  // 左右都無兄弟可以多塞一個key  只能分裂這個資料節點 //
+
+        leaf_page *temp = new leaf_page;// 新增一個資料節點
+        temp->parent = parent;          // 設定新節點的父節點指標
+        temp->pre_page = this;          // 設定新節點的左節點指標
+        temp->next_page = next_page;    // 設定新節點的右節點指標
+        if (next_page != nullptr)
+            next_page->pre_page = temp; // 設定右邊節點的左節點指標
+        next_page = temp;               // 設定右節點指標
+        
+        temp->key.assign(key.begin() + page_size/2, key.end());
+        key.erase(key.begin() + page_size/2, key.end());
+
+        // 無父節點 本身就是root層 需新增起始節點 //
+        if (myparent == nullptr){        
+
+            cout << "Create new root page" << endl;
+            index_page *temp_root = new index_page;
+            temp_root->push(temp->key[0]);
+            temp_root->ptr.push_back(this);
+            temp_root->ptr.push_back(temp);
+            parent = temp_root;
+            temp->parent = temp_root;
+            btree->root = temp_root;
+
+        } else {  // 具有父節點 //
+            myparent->push_up(temp, temp->key[0], btree);
+        }
     }
 }
 
-
 Btree::leaf_page::underflow(Btree* btree)
 {
+    int position;
     int page_size = btree->page_size;
     vector<int>::iterator itr;
     index_page *myparent = dynamic_cast<index_page*>(parent);
@@ -694,7 +733,8 @@ Btree::leaf_page::underflow(Btree* btree)
             cout << "borrow a key fom left leaf page" << endl;
             key.insert(key.begin(), left_page->key.back()); // 將左節點的最後一個key 放入此資料節點的第一個位置
             left_page->key.pop_back();                      // 移除左節點最後一個key
-            myparent->redistribute(left_page, key[0]); 
+            position = myparent->key_index_between_ptr(left_page, this);
+            myparent->key[position] = key[0];
             return 0; // 結束 Underflow 檢查與處理
 
         // 無法向左節點借一個key 且 右節點為NULL或不為兄弟  //
@@ -724,7 +764,8 @@ Btree::leaf_page::underflow(Btree* btree)
             cout << "borrow a key fom right leaf page" << endl;
             key.push_back(right_page->key[0]);  // 將右節點的第一個key 放入此節點中
             right_page->key.erase(right_page->key.begin(), right_page->key.begin()+1); // 移除右節點第一個key
-            myparent->redistribute(this, right_page->key[0]); 
+            position = myparent->key_index_between_ptr(this, right_page);
+            myparent->key[position] = right_page->key[0];
         
         } else {  // 無法向右節點借一個key 因此只能向右做合併 //
 
@@ -737,6 +778,5 @@ Btree::leaf_page::underflow(Btree* btree)
             }
              myparent->pop_down(this, right_page, btree);
         }
-
     } else {cout << "Error! No sibling in this Leaf page\n" << endl;}
 }
