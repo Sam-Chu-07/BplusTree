@@ -5,57 +5,6 @@
 using namespace std;
 
 int level;
-// ------------------------------------------------------ //
-// - - - - - - - - - - - - 節點 - - - - - - - - - - - - - //
-// ------------------------------------------------------ //
-class page{
-    public:
-        page();
-        virtual ~page(){}
-        friend class Btree;
-
-        set_type(string type){page_type = type;}
-        string get_type(){return page_type;}
-        int push(int value);
-        int pop(int value);
-
-        redistribute(page* left_page, int replace_key);
-
-    private:
-        string page_type; 
-        vector<int> key;
-        page* parent;
-        page *pre_page;
-        page *next_page;
-};
-
-// --------------------------------------------------------- //
-// - - - - - - - - - - - - - 路標節點 - - - - - - - - - - - - //
-// --------------------------------------------------------- //
-class index_page : public page
-{
-    public:
-        index_page();
-        friend class Btree;
-
-    private:
-        vector<page*> ptr;
-};
-
-
-// --------------------------------------------------------- //
-// - - - - - - - - - - - - - 資料節點 - - - - - - - - - - - - //
-// --------------------------------------------------------- //
-class leaf_page : public page
-{
-    public:
-        leaf_page();
-        friend class Btree;
-
-    private:
-        
-};
-
 
 
 // --------------------------------------------------------- //
@@ -74,15 +23,60 @@ class Btree
 
         Lookup(int value);
 
-        push_up(page* origin_page, page* new_page, int push_key);
-
-        display_tree(page* current);
-
         
-            
+       
     private:
         int page_size; // 兩倍的order
+
+        // ------------------------------------------------------ //
+        // - - - - - - - - - - - - 節點 - - - - - - - - - - - - - //
+        // ------------------------------------------------------ //
+        class page{
+            public:
+                string page_type; 
+                vector<int> key;
+                page* parent;
+                page *pre_page;
+                page *next_page;
+
+                page();
+                virtual ~page(){}
+                int push(int value);
+                int pop(int value);
+                show();
+        };
+
+        // --------------------------------------------------------- //
+        // - - - - - - - - - - - - - 路標節點 - - - - - - - - - - - - //
+        // --------------------------------------------------------- //
+        class index_page : public page
+        {
+            public:
+                vector<page*> ptr;
+
+                index_page();
+                ~index_page();
+                int key_index_between_ptr(page* x_page, page* y_page);
+                redistribute(page* left_page, int replace_key);
+        };
+
+        // --------------------------------------------------------- //
+        // - - - - - - - - - - - - - 資料節點 - - - - - - - - - - - - //
+        // --------------------------------------------------------- //
+        class leaf_page : public page
+        {
+            public:
+                leaf_page();
+                ~leaf_page();
+        };
+
         page *root;
+
+        push_up(page* origin_page, page* new_page, int push_key);
+
+        pop_down(page* empty_page, page* merge_page);
+
+        display_tree(page* current);
 };
 
 
@@ -122,6 +116,11 @@ int main()
                 }
                 cout << "Insert finish" << endl;
                 break;
+            case 6:
+                cout << "Delete key = ";
+                cin >> input;
+                tree.Delete(input);
+                break;
             case 7:
                 tree.Display();
                 cout << "\n" <<endl;
@@ -159,7 +158,7 @@ Btree::Btree(int input_order)
 // 遞迴顯示整棵 B+ Tree //
 Btree::display_tree(page* current)
 {
-    if (current->get_type() == "index"){
+    if (current->page_type == "index"){
         
         index_page *index = dynamic_cast<index_page*>(current);
         for(int i=0 ; i<index->ptr.size(); i++){
@@ -169,7 +168,7 @@ Btree::display_tree(page* current)
             if(i<index->key.size())
                 cout << index->key[i] << "(" << level << ") ; ";
         }
-    } else if (current->get_type() == "leaf"){
+    } else if (current->page_type == "leaf"){
         
         leaf_page *leaf = dynamic_cast<leaf_page*>(current);
          cout << "{ ";
@@ -191,7 +190,7 @@ Btree::Insert(int value)
 
     for(int x=0 ; x<10 ; x++)  // 先執行10次
     {
-        if (current->get_type() == "leaf"){ // 目前為資料節點
+        if (current->page_type == "leaf"){ // 目前為資料節點
             
             leaf_page *leaf = dynamic_cast<leaf_page*>(current);
 
@@ -199,18 +198,21 @@ Btree::Insert(int value)
             if (leaf->key.size() > page_size){ // 檢查是否超過資料節點的容量
 
                 cout << "\noverflow ! Leaf page size: " << current->key.size() << "\n" <<endl;
-                leaf_page *temp = new leaf_page;    // 新增一個資料節點
-                temp->parent = leaf->parent;        // 設定新節點的父節點
-                temp->pre_page = leaf;              // 設定新節點的左節點
-                temp->next_page = leaf->next_page;  // 設定新節點的右節點
-                leaf->next_page = temp;             // 設定舊節點的右節點
+                leaf_page *temp = new leaf_page;      // 新增一個資料節點
+                temp->parent = leaf->parent;          // 設定新節點的父節點指標
+                temp->pre_page = leaf;                // 設定新節點的左節點指標
+                temp->next_page = leaf->next_page;    // 設定新節點的右節點指標
+                if (leaf->next_page != nullptr)
+                    leaf->next_page->pre_page = temp; // 設定舊節點之右邊節點的左節點指標
+                leaf->next_page = temp;               // 設定舊節點的右節點指標
+                
                 temp->key.assign(leaf->key.begin() + page_size/2, leaf->key.end());
                 leaf->key.erase(leaf->key.begin() + page_size/2, leaf->key.end());
                 push_up(leaf, temp, temp->key[0]);
             }
             break;
 
-        } else if (current->get_type() == "index"){ // 目前為路標節點
+        } else if (current->page_type == "index"){ // 目前為路標節點
 
             index = dynamic_cast<index_page*>(current);
 
@@ -228,7 +230,7 @@ Btree::Insert(int value)
 
         } else { cout << "Error! page neither Index page nor Leaf page!!!" << endl; }
     }
-    cout << "Insert Success !\n" << endl;
+    cout << "Insert Success !" << endl;
 }
 
 
@@ -256,10 +258,12 @@ Btree::push_up(page* origin_page, page* new_page, int push_key)
 
             cout << "\noverflow ! Index page size: " << parent->key.size() << "\n" <<endl;
             index_page* temp = new index_page;      // 新增路標節點
-            temp->parent = parent->parent;          // 設定新節點之父節點
-            temp->pre_page = parent;                // 設定新節點隻左節點
-            temp->next_page = parent->next_page;    // 設定新節點隻右節點
-            parent->next_page = temp;               // 設定舊節點之右節點
+            temp->parent = parent->parent;          // 設定新節點之父節點指標
+            temp->pre_page = parent;                // 設定新節點隻左節點指標
+            temp->next_page = parent->next_page;    // 設定新節點隻右節點指標
+            if (parent->next_page != nullptr)
+                parent->next_page->pre_page = temp; // 設定舊節點之右邊節點的左節點指標
+            parent->next_page = temp;               // 設定舊節點之右節點指標
             temp->key.assign(parent->key.begin() + page_size/2, parent->key.end());
             parent->key.erase(parent->key.begin() + page_size/2, parent->key.end());
             temp->ptr.assign(parent->ptr.begin() + page_size/2 + 1, parent->ptr.end());
@@ -287,43 +291,80 @@ Btree::Delete(int value)
 
     for(int x=0 ; x<10 ; x++)  // 先執行10次
     {
-        if (current->get_type() == "leaf"){ // 目前為資料節點
+        if (current->page_type == "leaf"){ // 目前為資料節點
             
             leaf_page *leaf = dynamic_cast<leaf_page*>(current);
-            if (leaf->pop(value) == -1){   // 對資料節點移除 使用者輸入的值
-                cout << "Error! Delete value: " << value << "Not Exist" << endl; // 報錯: 該值不存在
-                return 0;
+            if (leaf->pop(value) == -1){   // 對資料節點移除目標值
+                cout << "Error! Key: " << value << " Not Exist" << endl; // 報錯: 該值不存在
+                cout << "Delete Fail !" << endl;
+                return -1;
             }
 
-            if (leaf->key.size() < page_size/2){ // 檢查資料節點是否空太多位置
+            if (leaf->key.size() < page_size/2){ // 檢查資料節點是否剩餘過多空間
 
                 cout << "\nunderflow ! Leaf page size: " << leaf->key.size() << "\n" <<endl;
                 
-                if (leaf->next_page->parent == leaf->parent){ // 判斷右節點是否為兄弟
+                // 判斷左節點是否為兄弟 且不為 NULL //
+                if (leaf->pre_page != nullptr && leaf->pre_page->parent == leaf->parent){
+
+                    cout << "Left leaf page is sibling" <<  endl;
+                    leaf_page *left_page = dynamic_cast<leaf_page*>(leaf->pre_page);
+                    index_page *parent = dynamic_cast<index_page*>(leaf->parent);
                     
-                    leaf_page *right_page = dynamic_cast<leaf_page*>(leaf->next_page);
-
-                    if (right_page->key.size() > page_size/2){ // 可以向右節點借一個key
+                    // 可以向左節點借一個key //
+                    if (left_page->key.size() > page_size/2){
                         
-                        leaf->key.push_back(right_page->key[0]);  // 此節點加入右節點的第一個key
-                        right_page->key.erase(right_page->key.begin(), right_page->key.begin()+1) ;
-                        //leaf->parent
+                        cout << "borrow a key fom left leaf page" << endl;
+                        leaf->key.insert(leaf->key.begin(), left_page->key.back()); // 將左節點的最後一個key 放入此資料節點的第一個位置
+                        left_page->key.pop_back(); // 移除左節點最後一個key
+                        parent->redistribute(left_page, leaf->key[0]); 
+                        break; // 結束 Underflow 檢查與處理
 
+                    // 無法向左節點借一個key 且 右節點為NULL或不為兄弟  //
+                    } else if (leaf->next_page == nullptr || leaf->next_page->parent != leaf->parent){
                         
-
-                    } else {                                   // 無法向右節點借一個key
-
+                        cout << "merge to left leaf page" << endl;
+                        // 將這個資料節點內所有的key都丟到左節點
+                        for( ; leaf->key.size() > 0 ; ){
+                            left_page->key.push_back(leaf->key.front());
+                            leaf->key.erase(leaf->key.begin(), leaf->key.begin()+1);
+                        }
+                        pop_down(leaf, left_page);
+                        break; // 結束 Underflow 檢查與處理
                     }
+                }
 
+                // 判斷右節點是否為兄弟 且 不為 null//
+                if (leaf->next_page != nullptr && leaf->next_page->parent == leaf->parent){ 
+                    
+                    cout << "Right leaf page is sibling" << endl;
+                    leaf_page *right_page = dynamic_cast<leaf_page*>(leaf->next_page);
+                    index_page *parent = dynamic_cast<index_page*>(leaf->parent);
 
-                } else if (leaf->pre_page->parent == leaf->parent){ // 判斷左節點是否為兄弟
+                    // 可以向右節點借一個key //
+                    if (right_page->key.size() > page_size/2){    
+                        
+                        cout << "borrow a key fom right leaf page" << endl;
+                        leaf->key.push_back(right_page->key[0]);  // 將右節點的第一個key 放入此節點中
+                        right_page->key.erase(right_page->key.begin(), right_page->key.begin()+1); // 移除右節點第一個key
+                        parent->redistribute(leaf, right_page->key[0]); 
+                    
+                    } else {  // 無法向右節點借一個key 因此只能向右做合併 //
+
+                        cout << "merge to right leaf page" << endl;
+                        // 將這個資料節點內所有的key都丟到右節點
+                        for( itr = right_page->key.begin() ; leaf->key.size() > 0 ; ){
+                            itr = right_page->key.insert(itr, leaf->key.back());
+                            leaf->key.pop_back();
+                        }
+                        pop_down(leaf, right_page);
+                    }
 
                 } else {cout << "Error! No sibling in this Leaf page\n" << endl;}
             }
-            break;
+            break; // 結束 Underflow 檢查與處理
 
-
-        } else if (current->get_type() == "index"){ // 目前為路標節點
+        } else if (current->page_type == "index"){ // 目前為路標節點 繼續往下找
 
             index = dynamic_cast<index_page*>(current);
 
@@ -339,9 +380,68 @@ Btree::Delete(int value)
 
             current = index->ptr[position];
 
-        } else { cout << "Error! page neither Index page nor Leaf page!!!" << endl; }
+        } else { cout << "Error! This page neither Index page nor Leaf page!!!" << endl; }
     }
+    cout << "Delete Success !" << endl;
 }
+
+
+Btree::pop_down(page* empty_page, page* merge_page)
+{
+    index_page *parent = dynamic_cast<index_page*>(empty_page->parent);    // 父節點必為路標節點
+    
+    vector<page*>::iterator itr;
+    itr = find(parent->ptr.begin(), parent->ptr.end(), empty_page);        // 回傳空節點指標之位置
+    int position = parent->key_index_between_ptr(empty_page, merge_page);  // 回傳兩指標間key的index
+
+    parent->ptr.erase(itr, itr+1);                                                         // 移除空節點之指標
+    parent->key.erase(parent->key.begin() + position, parent->key.begin() + position + 1); // 移除兩指標間的key值
+    
+    if (empty_page->next_page == merge_page){             // 判斷左為空節點 右為合併節點
+        merge_page->pre_page = empty_page->pre_page;      // 設定合併節點的左節點指標
+        if (empty_page->pre_page != nullptr)
+            empty_page->pre_page->next_page = merge_page; // 設定空節點之左邊節點的 右節點指標 
+    } else {                                              // 判斷左為合併節點 右為空節點
+        merge_page->next_page = empty_page->next_page;    // 設定合併節點的右節點指標
+        if (empty_page->next_page != nullptr)
+            empty_page->next_page->pre_page = merge_page; // 設定空節點之右邊節點的 左節點指標 
+    }
+    
+    delete empty_page;   // 刪除此空的節點
+
+    if (parent == root && parent->key.size() == 0){ // 父節點為根節點(Root) 且 父節點內已經沒有key了
+        
+        cout << "Root Page key size: 0, pointer size: " << parent->ptr.size() << endl;
+        cout << "Delete current Root Page!\n" << endl;
+        if (parent->ptr[0] != merge_page)
+            cout << "Error! remain pointer in root not point to the merge page\n" << endl;
+        delete root;
+        root = merge_page;
+
+    } else if (parent->key.size() < page_size/2){ // 父節點內剩餘太多空間
+
+
+        cout << "\nunderflow ! Index page size: " << parent->key.size() << "\n" <<endl;
+
+
+        // 判斷左節點是否為兄弟 且不為 NULL //
+        if (parent->pre_page != nullptr && parent->pre_page->parent == parent->parent){
+            
+            cout << "Left index page is sibling" <<  endl;
+            leaf_page *left_page = dynamic_cast<leaf_page*>(parent->pre_page);
+            index_page *parent = dynamic_cast<index_page*>(parent->parent);
+
+        }
+
+        // 可以向左節點借一個key //
+
+        // 無法向左節點借一個key 且 右節點為NULL或不為兄弟  //
+    }
+
+}
+
+
+
 
 
 // 在 B+ Tree 中搜尋使用者輸入的數值 //
@@ -355,17 +455,25 @@ Btree::Lookup(int value)
 
     for(int x=0 ; x<10 ; x++)  // 先執行10次
     {
-        if (current->get_type() == "leaf"){ // 目前為資料節點
+        if (current->page_type == "leaf"){ // 目前為資料節點
             
             leaf_page *leaf = dynamic_cast<leaf_page*>(current);
             itr = find(leaf->key.begin(), leaf->key.end(), value);
-            if (itr != leaf->key.end())
-                cout << "true" << endl;
+            if (itr != leaf->key.end()){
+                if (leaf->pre_page != nullptr)
+                    leaf->pre_page->show();
+                cout << ";\n";
+                leaf->show();
+                //cout << "true" << endl;
+                cout << ";\n";
+                if (leaf->next_page != nullptr)
+                    leaf->next_page->show();
+            }
             else
                 cout << "false" << endl;
             break;
 
-        } else if (current->get_type() == "index"){ // 目前為路標節點
+        } else if (current->page_type == "index"){ // 目前為路標節點
 
             index = dynamic_cast<index_page*>(current);
 
@@ -389,13 +497,13 @@ Btree::Lookup(int value)
 
 
 
-page::page(){
+Btree::page::page(){
     parent = nullptr;
     pre_page = nullptr;
     next_page = nullptr;
 }
 
-int page::push(int value)
+int Btree::page::push(int value)
 {
     vector<int>::iterator itr;
     for (itr = key.begin() ; itr != key.end() ; itr++){
@@ -406,7 +514,7 @@ int page::push(int value)
     return itr - key.begin();
 }
 
-int page::pop(int value)
+int Btree::page::pop(int value)
 {
     vector<int>::iterator itr;
     for (itr = key.begin() ; itr != key.end() ; itr++){
@@ -418,17 +526,67 @@ int page::pop(int value)
     return -1;
 }
 
-index_page::index_page()
+Btree::page::show(){
+
+    if (page_type == "index"){
+        cout << "Index Page" << endl;
+    }else if (page_type == "leaf"){
+        cout << "Leaf Page" << endl;
+    }else{
+        cout << "Error page type\n" << endl;
+        return 0;
+    }
+    cout << "key size: " << key.size() << endl;
+    for(int i=0 ; i<key.size() ; i++){
+        cout << key[i] << " ";
+    }
+    cout << endl;
+}
+
+
+Btree::index_page::index_page()
 {
-    set_type("index");
+    page_type = "index";
     cout << "Create a Index Page" << endl;
 }
 
-index_page::redistribute(page* left_page, int replace_key)
+Btree::index_page::~index_page()
 {
-    
+    if (key.size() != 0)
+        cout << "Error! Delete a Index page with key size not Zero" << endl;
+    else{
+        cout << "Delete a Index Page between [ " << endl;
+        if (pre_page == nullptr)
+            cout << " NULL ";
+        else
+            for(int i=0 ; i<pre_page->key.size() ; i++)
+                cout << pre_page->key[i] << " ";
+        cout << "] and [ ";
+
+        if (next_page == nullptr)
+            cout << " NULL ";
+        else
+            for(int i=0 ; i<next_page->key.size() ; i++)
+                cout << next_page->key[i] << " ";
+        cout << "]" << endl;
+    }
+}
+
+int Btree::index_page::key_index_between_ptr(page* x_page, page* y_page)
+{
     for(int i=0 ; i<key.size() ; i++){
-        if (ptr[i] == leaf_page){
+        if ((ptr[i] == x_page && ptr[i+1] == y_page) || (ptr[i] == y_page && ptr[i+1] == x_page))
+            return i;
+    }
+    cout << "Error! No key value between given pointer\n" << endl;
+    return -1;
+}
+
+
+Btree::index_page::redistribute(page* left_page, int replace_key)
+{
+    for(int i=0 ; i<key.size() ; i++){
+        if (ptr[i] == left_page){
             key[i] = replace_key;
             cout << "Redistribute Success!" << endl;
             break;
@@ -436,8 +594,30 @@ index_page::redistribute(page* left_page, int replace_key)
     }
 }
 
-leaf_page::leaf_page()
+Btree::leaf_page::leaf_page()
 {
-    set_type("leaf");
+    page_type = "leaf";
     cout << "Create a Leaf Page" << endl;
+}
+
+Btree::leaf_page::~leaf_page()
+{
+    if (key.size() != 0)
+        cout << "Error! Delete a Leaf page with key size not Zero" << endl;
+    else{
+        cout << "Delete a Leaf Page between [ " << endl;
+        if (pre_page == nullptr)
+            cout << " NULL ";
+        else
+            for(int i=0 ; i<pre_page->key.size() ; i++)
+                cout << pre_page->key[i] << " ";
+        cout << "] and [ ";
+
+        if (next_page == nullptr)
+            cout << " NULL ";
+        else
+            for(int i=0 ; i<next_page->key.size() ; i++)
+                cout << next_page->key[i] << " ";
+        cout << "]" << endl;
+    }
 }
