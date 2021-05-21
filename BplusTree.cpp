@@ -78,8 +78,6 @@ class Btree
 
         page *root;
 
-        pop_down(page* empty_page, page* merge_page);
-
         display_tree(page* current);
 };
 
@@ -91,13 +89,14 @@ class Btree
 // ################################################# //
 int main()
 {
-    int order = 2, input = 0;
+    int order, input;
+    bool quit = false;
     cout << "Hello!" << endl ;
     
     cin >> order;
     Btree tree(order);
     
-    while(input != 8)
+    while(quit == false)
     {
         cout << endl;
         cout << "(1) Initialize (2) Attach (3) Bulkload (4) Lookup" << endl;
@@ -129,6 +128,9 @@ int main()
                 tree.Display();
                 cout << "\n" <<endl;
                 break;
+            case 8:
+                quit = true;
+                break;
             default:
                 break;
         }
@@ -159,6 +161,7 @@ Btree::Btree(int input_order)
 
 }
 
+
 // 遞迴顯示整棵 B+ Tree //
 Btree::display_tree(page* current)
 {
@@ -181,6 +184,7 @@ Btree::display_tree(page* current)
          cout << "} ; " ;
     }
 }
+
 
 // 插入一個使用者輸入的數值 //
 Btree::Insert(int value)
@@ -224,7 +228,6 @@ Btree::Insert(int value)
     }
     cout << "Insert Success !" << endl;
 }
-
 
 
 // 移除一個使用者輸入的值 //
@@ -275,16 +278,6 @@ Btree::Delete(int value)
     }
     cout << "Delete Success !" << endl;
 }
-
-
-Btree::pop_down(page* empty_page, page* merge_page)
-{
-    
-
-}
-
-
-
 
 
 // 在 B+ Tree 中搜尋使用者輸入的數值 //
@@ -462,6 +455,7 @@ Btree::index_page::push_up(page* new_page, int push_key, Btree* btree)
     }
 }
 
+
 Btree::index_page::pop_down(page* empty_page, page* merge_page, Btree* btree)
 {
     int page_size = btree->page_size;
@@ -554,7 +548,7 @@ Btree::index_page::pop_down(page* empty_page, page* merge_page, Btree* btree)
                 
                 cout << "borrow a key and a pointer fom right index page" << endl;
                 position = myparent->key_index_between_ptr(this, right_page); // 取得父節點中 兩指標間key的index
-                key.push_back(key.begin(), myparent->key[position]);          // 將父節點中 兩指標間key值 放入自己最後一個key位置
+                key.push_back(myparent->key[position]);                       // 將父節點中 兩指標間key值 放入自己最後一個key位置
                 ptr.push_back(right_page->ptr[0]);                            // 將右節點的第一個pointer  放入自己最後一個ptr位置
                 myparent->key[position] = right_page->key[0];                 // 父節點中 兩指標間的key值 替換成 右節點的第一個key
                 right_page->key.erase(right_page->key.begin(), right_page->key.begin()+1);  // 移除右節點第一個key
@@ -584,6 +578,7 @@ Btree::index_page::pop_down(page* empty_page, page* merge_page, Btree* btree)
         } else {cout << "Error! No sibling in this Index page\n" << endl;}
     }
 }
+
 
 
 int Btree::index_page::key_index_between_ptr(page* x_page, page* y_page)
@@ -643,9 +638,13 @@ Btree::leaf_page::~leaf_page()
     }
 }
 
+
 Btree::leaf_page::overflow(Btree* btree)
 {
     int page_size = btree->page_size;
+
+    if ()
+
     leaf_page *temp = new leaf_page;// 新增一個資料節點
     temp->parent = parent;          // 設定新節點的父節點指標
     temp->pre_page = this;          // 設定新節點的左節點指標
