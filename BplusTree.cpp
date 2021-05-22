@@ -3,9 +3,21 @@
 #include <vector>
 #include <list>
 #include <string>
+#include <cstring>
 using namespace std;
 
-int level;
+int level;  // debug 用
+
+string_to_int_array(char *str, list<int> &array){
+
+    char *pch;
+    pch = strtok(str, " ");
+    while (pch != NULL)
+    {
+        array.push_back(atoi(pch));
+        pch = strtok (NULL, " ");
+    }      
+}
 
 
 // --------------------------------------------------------- //
@@ -16,7 +28,9 @@ class Btree
     public:
         Btree(int input_order);
 
-        Display(){level=0; display_tree(root);}
+        ~Btree();
+        
+        Display();
 
         Insert(int value);
 
@@ -25,7 +39,11 @@ class Btree
         Lookup(int value);
 
         BulkLoading();
+
+        string Attach();
        
+        int get_order(){return page_size/2;}
+
     private:
         int page_size; // 兩倍的order
 
@@ -44,7 +62,10 @@ class Btree
                 virtual ~page(){}
                 int push(int value);
                 int pop(int value);
-                show();
+                
+                virtual display(){}
+                virtual mydisplay(){}
+                virtual attach(string &pattern){}
         };
 
         // --------------------------------------------------------- //
@@ -58,9 +79,13 @@ class Btree
                 index_page();
                 ~index_page();
                 
+                int key_index_between_ptr(page* x_page, page* y_page);
+                display();
+                mydisplay();
+                attach(string &pattern);
                 push_up(page* new_page, Btree* btree);
                 pop_down(page* empty_page, page* merge_page, Btree* btree);
-                int key_index_between_ptr(page* x_page, page* y_page);
+                
         };
 
         // --------------------------------------------------------- //
@@ -72,13 +97,14 @@ class Btree
                 leaf_page();
                 ~leaf_page();
 
+                display();
+                mydisplay();
+                attach(string &pattern);
                 overflow(Btree* btree);
                 underflow(Btree* btree);
         };
 
         page *root;
-
-        display_tree(page* current);
 };
 
 
@@ -89,12 +115,12 @@ class Btree
 // ################################################# //
 int main()
 {
-    int order, input;
+    int input, order;
+    char str[1000];
+    string attach_pattern;
     bool quit = false;
-    cout << "Hello!" << endl ;
-    
-    cin >> order;
-    Btree tree(order);
+    Btree *current_tree = nullptr;
+    vector<Btree*> Tree;
     
     while(quit == false)
     {
@@ -103,39 +129,80 @@ int main()
         cout << "(5) Insert     (6) Delete (7) Display  (8) Quit" << endl;
         cout << "Select an operation: ";
         cin >> input;
+        if (current_tree == nullptr && input != 1 && input != 8){
+            cout << "Error ! You should initialize a B+ tree first" << endl;
+            continue;
+        }
+
         switch (input)
         {
-            case 3:
-                cout << "Bulkloading key sequence: ";
-                tree.BulkLoading();
+            case 1:
+                cout << "Initializing order = ";
+                cin >> order;
+                if (order > 0){
+                    current_tree = new Btree(order);
+                    if (find(Tree.begin(), Tree.end(), current_tree) == Tree.end())
+                        Tree.push_back(current_tree);
+                    cout << "Success create a B+ tree with order " << order << endl;
+                } else {
+                    cout << "Error ! order of tree should be a positive integer" << endl;
+                }
                 break;
+            
+            case 2:
+                cout << "Attaching order = ";
+                cin >> order;
+                cout << "Nodes in inorder-like traversal: ";
+                fflush(stdin);
+                cin.getline(str, 1000);
+                attach_pattern = str;
+                for(int i=0 ; i<Tree.size() ; i++){
+                    if (Tree[i]->get_order() == order && Tree[i]->Attach() == attach_pattern){
+                        current_tree = Tree[i];
+                        cout << "Attach Success !" << endl;
+                        break;
+                    }
+                    if (i == Tree.size()-1)
+                        cout << "Attach Fail !" << endl;
+                }
+                break;
+
+            case 3:
+                current_tree->BulkLoading();
+                break;
+
             case 4:
                 cout << "Look up key = ";
                 cin >> input;
-                tree.Lookup(input);
+                current_tree->Lookup(input);
                 break;
+
             case 5:
-                cout << "Inserting" << endl;
+                cout << "Insert key = " << endl;
                 cin >> input;
-                while(input != -1){
-                    tree.Insert(input);
-                    cin >> input;
-                }
-                cout << "Insert finish" << endl;
+                current_tree->Insert(input);
+                cin >> input;
                 break;
+
             case 6:
                 cout << "Delete key = ";
                 cin >> input;
-                tree.Delete(input);
+                current_tree->Delete(input);
                 break;
+
             case 7:
-                tree.Display();
-                cout << "\n" <<endl;
+                current_tree->Display();
+                cout << endl;
                 break;
+                
             case 8:
                 quit = true;
                 break;
+
             default:
+                cout << "There are " << Tree.size() << " B+ Tree" << endl;
+                for (int i=0 ; i<Tree.size() ; i++)
+                    cout << "<" << i+1 << "> Tree:" << Tree[i]->Attach() << endl;
                 break;
         }
     }
@@ -146,6 +213,7 @@ int main()
 // ################################################# //
     // ---------------- 函式定義 ---------------- //
 // ################################################# //
+
 // 建立一棵B+ Tree //
 Btree::Btree(int input_order)
 {
@@ -153,34 +221,23 @@ Btree::Btree(int input_order)
     root = nullptr;
 }
 
-
-// 遞迴顯示整棵 B+ Tree //
-Btree::display_tree(page* current)
+// 刪除一棵B+ Tree //
+Btree::~Btree()
 {
-    if (current == nullptr){
-
-        cout << "Empty B+ Tree";
-        
-    }else if (current->page_type == "index"){
-        
-        index_page *index = dynamic_cast<index_page*>(current);
-        for(int i=0 ; i<index->ptr.size(); i++){
-            level ++;
-            display_tree(index->ptr[i]);
-            level --;
-            if(i<index->key.size())
-                cout << index->key[i] << "(" << level << ") ; ";
-        }
-    } else if (current->page_type == "leaf"){
-        
-        leaf_page *leaf = dynamic_cast<leaf_page*>(current);
-         cout << "{ ";
-        for(int i=0 ; i<leaf->key.size() ; i++)
-            cout << leaf->key[i] << " ";
-         cout << "} ; " ;
-    }
+    delete root;
+    cout << "Remove B+ Tree Success!" << endl;
 }
 
+// 遞迴顯示整棵 B+ Tree //
+Btree::Display()
+{
+    level = 0; 
+    if (root == nullptr){
+        cout << "Empty Tree";  
+    } else {
+        root->display();
+    }
+}
 
 // 插入一個使用者輸入的數值 //
 Btree::Insert(int value)
@@ -229,7 +286,6 @@ Btree::Insert(int value)
     }
     cout << "Insert Success !" << endl;
 }
-
 
 // 移除一個使用者輸入的值 //
 Btree::Delete(int value)
@@ -290,7 +346,6 @@ Btree::Delete(int value)
     cout << "Delete Success !" << endl;
 }
 
-
 // 在 B+ Tree 中搜尋使用者輸入的數值 //
 Btree::Lookup(int value)
 {
@@ -336,11 +391,10 @@ Btree::Lookup(int value)
     }
 }
 
-
 // 在 B+ Tree 中建立使用者連續輸入的key值 //
 Btree::BulkLoading()
 {
-    int input, count=0;
+    char input[1000];
     list<int> array;
     leaf_page *current = nullptr, *temp = nullptr, *start = nullptr;
     index_page *parent;
@@ -348,24 +402,21 @@ Btree::BulkLoading()
     if (root != nullptr) {
         cout << "Error ! You can't not use bulkloading in a non empty tree!" << endl; 
         return -1;
-    }
+    }else
+        cout << "Bulkloading key sequence: ";
 
-    cin >> input;
-    while(input != -1){
-        array.push_back(input);
-        cin >> input;
-    }
+    fflush(stdin);
+    cin.getline(input, 1000);
+    string_to_int_array(input, array);
 
     array.sort();
     while(!array.empty()){
 
         if (current == nullptr){
             current = new leaf_page;
-            count ++;
             start = current;
         } else if (current->key.size() == page_size){
             temp = new leaf_page;
-            count ++;
             current->next_page = temp;
             temp->pre_page = current;
             current = temp;  
@@ -412,6 +463,19 @@ Btree::BulkLoading()
     cout << "BulkLoading Success!" << endl;
 }
 
+// 回傳B+ Tree 的 各個節點的key //
+string Btree::Attach()
+{
+    if (root == nullptr){
+        return "\0";
+    } else {
+        string pattern;
+        root->attach(pattern);
+        return pattern;
+    }
+}
+
+
 
 
 
@@ -445,23 +509,6 @@ int Btree::page::pop(int value)
     return -1;
 }
 
-Btree::page::show()
-{
-    if (page_type == "index"){
-        cout << "Index Page" << endl;
-    }else if (page_type == "leaf"){
-        cout << "Leaf Page" << endl;
-    }else{
-        cout << "Error page type\n" << endl;
-        return 0;
-    }
-    cout << "key size: " << key.size() << endl;
-    for(int i=0 ; i<key.size() ; i++){
-        cout << key[i] << " ";
-    }
-    cout << endl;
-}
-
 
 
 
@@ -474,23 +521,8 @@ Btree::index_page::index_page()
 
 Btree::index_page::~index_page()
 {
-    if (key.size() != 0)
-        cout << "Error! Delete a Index page with key size not Zero" << endl;
-    else{
-        cout << "Delete a Index Page between [ ";
-        if (pre_page == nullptr)
-            cout << " NULL ";
-        else
-            for(int i=0 ; i<pre_page->key.size() ; i++)
-                cout << pre_page->key[i] << " ";
-        cout << "] and [ ";
-
-        if (next_page == nullptr)
-            cout << " NULL ";
-        else
-            for(int i=0 ; i<next_page->key.size() ; i++)
-                cout << next_page->key[i] << " ";
-        cout << "]" << endl;
+    for(int i=0 ; i<ptr.size() ; i++){
+        delete ptr[i];
     }
 }
 
@@ -502,6 +534,37 @@ int Btree::index_page::key_index_between_ptr(page* x_page, page* y_page)
     }
     cout << "Error! No key value between given pointer\n" << endl;
     return -1;
+}
+
+Btree::index_page::display()
+{
+    for(int i=0 ; i<ptr.size(); i++){
+        ptr[i]->display();
+        if(i<key.size())
+            cout << key[i] << " ; ";
+    }
+}
+
+Btree::index_page::mydisplay()
+{
+    for(int i=0 ; i<ptr.size(); i++){
+        level ++;
+        ptr[i]->mydisplay();
+        level --;
+        if(i<key.size())
+            cout << key[i] << "(" << level << ") ; ";
+    }
+}
+
+Btree::index_page::attach(string &pattern)
+{
+    for(int i=0 ; i<ptr.size(); i++){
+        ptr[i]->attach(pattern);
+        if(i<key.size()){
+            pattern += to_string(key[i]);
+            pattern += " ; ";
+        }
+    }
 }
 
 Btree::index_page::push_up(page* new_page, Btree* btree)
@@ -709,7 +772,6 @@ Btree::index_page::pop_down(page* empty_page, page* merge_page, Btree* btree)
 
 
 
-
 Btree::leaf_page::leaf_page()
 {
     page_type = "leaf";
@@ -718,24 +780,43 @@ Btree::leaf_page::leaf_page()
 
 Btree::leaf_page::~leaf_page()
 {
-    if (key.size() != 0)
-        cout << "Error! Delete a Leaf page with key size not Zero" << endl;
-    else{
-        cout << "Delete a Leaf Page between [ ";
-        if (pre_page == nullptr)
-            cout << " NULL ";
-        else
-            for(int i=0 ; i<pre_page->key.size() ; i++)
-                cout << pre_page->key[i] << " ";
-        cout << "] and [ ";
-
-        if (next_page == nullptr)
-            cout << " NULL ";
-        else
-            for(int i=0 ; i<next_page->key.size() ; i++)
-                cout << next_page->key[i] << " ";
-        cout << "]" << endl;
+    cout << "Removing leaf page { ";
+    for(int i=0 ; i<key.size() ; i++){
+        cout << key[i] << " " << endl;
     }
+    cout << " }" << endl;
+}
+
+Btree::leaf_page::display()
+{
+    for(int i=0 ; i<key.size() ; i++){
+        cout << key[i];
+        if (i != key.size()-1)
+            cout << " ";
+    }
+    if (next_page != nullptr)
+        cout << " ; ";
+}
+
+Btree::leaf_page::mydisplay()
+{
+    cout << "{ ";
+    for(int i=0 ; i<key.size() ; i++)
+        cout << key[i] << " ";
+    cout << "}" ;
+    if (next_page != nullptr)
+        cout << " ; ";
+}
+
+Btree::leaf_page::attach(string &pattern)
+{
+    for(int i=0 ; i<key.size() ; i++){
+        pattern += to_string(key[i]);
+        if (i != key.size()-1)
+            pattern += " ";
+    }
+    if (next_page != nullptr)
+        pattern += " ; ";
 }
 
 Btree::leaf_page::overflow(Btree* btree)
