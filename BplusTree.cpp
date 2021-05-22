@@ -1,6 +1,7 @@
 #include <iostream>
 #include <algorithm>
 #include <vector>
+#include <list>
 #include <string>
 using namespace std;
 
@@ -23,7 +24,7 @@ class Btree
 
         Lookup(int value);
 
-        
+        BulkLoading();
        
     private:
         int page_size; // 兩倍的order
@@ -57,7 +58,7 @@ class Btree
                 index_page();
                 ~index_page();
                 
-                push_up(page* new_page, int push_key, Btree* btree);
+                push_up(page* new_page, Btree* btree);
                 pop_down(page* empty_page, page* merge_page, Btree* btree);
                 int key_index_between_ptr(page* x_page, page* y_page);
         };
@@ -104,6 +105,10 @@ int main()
         cin >> input;
         switch (input)
         {
+            case 3:
+                cout << "Bulkloading key sequence: ";
+                tree.BulkLoading();
+                break;
             case 4:
                 cout << "Look up key = ";
                 cin >> input;
@@ -134,16 +139,6 @@ int main()
                 break;
         }
     }
-
-
-    /*
-    Btree tree(2);
-    tree.Insert(5);
-    tree.Insert(3);
-    tree.Insert(9);
-    tree.Insert(8);
-    tree.Insert(1);
-    */
     return 0;
 }
 
@@ -155,16 +150,18 @@ int main()
 Btree::Btree(int input_order)
 {
     page_size = input_order * 2;
-    leaf_page *leaf = new leaf_page;
-    root = leaf;
-
+    root = nullptr;
 }
 
 
 // 遞迴顯示整棵 B+ Tree //
 Btree::display_tree(page* current)
 {
-    if (current->page_type == "index"){
+    if (current == nullptr){
+
+        cout << "Empty B+ Tree";
+        
+    }else if (current->page_type == "index"){
         
         index_page *index = dynamic_cast<index_page*>(current);
         for(int i=0 ; i<index->ptr.size(); i++){
@@ -196,7 +193,12 @@ Btree::Insert(int value)
 
     for(int x=0 ; x<10 ; x++)  // 先執行10次
     {
-        if (current->page_type == "leaf"){ // 目前為資料節點
+        if (current == nullptr){  // 此樹還未建立任何節點
+
+            root = new leaf_page;
+            current = root;
+
+        } else if (current->page_type == "leaf"){ // 目前為資料節點
             
             leaf_page *leaf = dynamic_cast<leaf_page*>(current);
 
@@ -233,7 +235,6 @@ Btree::Insert(int value)
 Btree::Delete(int value)
 {
     cout << "Try to Delete value: " << value << endl;
-
     int position;
     page *current = root;  // 從根節點往下找尋欲刪除的值
     index_page *index;
@@ -241,7 +242,13 @@ Btree::Delete(int value)
 
     for(int x=0 ; x<10 ; x++)  // 先執行10次
     {
-        if (current->page_type == "leaf"){ // 目前為資料節點
+        if (current == nullptr){  // 此樹還未建立任何節點
+
+            cout << "Error! Key: " << value << " Not Exist" << endl; // 報錯: 該值不存在
+            cout << "Delete Fail !" << endl;
+            return -1;
+
+        }else if (current->page_type == "leaf"){ // 目前為資料節點
             
             leaf_page *leaf = dynamic_cast<leaf_page*>(current);
             if (leaf->pop(value) == -1){   // 對資料節點移除目標值
@@ -250,7 +257,12 @@ Btree::Delete(int value)
                 return -1;
             }
 
-            if (leaf->key.size() < page_size/2){ // 檢查資料節點是否剩餘過多空間
+            if (leaf == root && leaf->key.size() == 0){ // 檢查資料節點是否為root 且 已無key值
+
+                root = nullptr;
+                delete leaf;
+
+            } else if (leaf != root && leaf->key.size() < page_size/2){ // 檢查資料節點是否剩餘過多空間
 
                 cout << "\nunderflow ! Leaf page size: " << leaf->key.size() << "\n" <<endl;
                 leaf->underflow(this);
@@ -290,20 +302,16 @@ Btree::Lookup(int value)
 
     for(int x=0 ; x<10 ; x++)  // 先執行10次
     {
-        if (current->page_type == "leaf"){ // 目前為資料節點
+        if (current == nullptr){  // 此樹還未建立任何節點
+
+            cout << "false" << endl;
+
+        } else if (current->page_type == "leaf"){ // 目前為資料節點
             
             leaf_page *leaf = dynamic_cast<leaf_page*>(current);
             itr = find(leaf->key.begin(), leaf->key.end(), value);
-            if (itr != leaf->key.end()){
-                if (leaf->pre_page != nullptr)
-                    leaf->pre_page->show();
-                cout << ";\n";
-                leaf->show();
-                //cout << "true" << endl;
-                cout << ";\n";
-                if (leaf->next_page != nullptr)
-                    leaf->next_page->show();
-            }
+            if (itr != leaf->key.end())
+                cout << "true" << endl;
             else
                 cout << "false" << endl;
             break;
@@ -329,12 +337,86 @@ Btree::Lookup(int value)
 }
 
 
+// 在 B+ Tree 中建立使用者連續輸入的key值 //
+Btree::BulkLoading()
+{
+    int input, count=0;
+    list<int> array;
+    leaf_page *current = nullptr, *temp = nullptr, *start = nullptr;
+    index_page *parent;
+
+    if (root != nullptr) {
+        cout << "Error ! You can't not use bulkloading in a non empty tree!" << endl; 
+        return -1;
+    }
+
+    cin >> input;
+    while(input != -1){
+        array.push_back(input);
+        cin >> input;
+    }
+
+    array.sort();
+    while(!array.empty()){
+
+        if (current == nullptr){
+            current = new leaf_page;
+            count ++;
+            start = current;
+        } else if (current->key.size() == page_size){
+            temp = new leaf_page;
+            count ++;
+            current->next_page = temp;
+            temp->pre_page = current;
+            current = temp;  
+        }
+        current->key.push_back(array.front());
+        array.pop_front();
+    }
+    
+    current = start;
+    while(current != nullptr){
+        
+        for(int i=0 ; i<current->key.size() ; i++)
+            cout << "Try to Insert value: " << current->key[i] << endl;
+
+        if (root == nullptr){
+
+            root = current;
+
+        } else if (current->pre_page->parent == nullptr){
+
+            cout << "Create new root page" << endl;
+            index_page *temp_root = new index_page;
+            temp_root->push(current->key[0]);
+            temp_root->ptr.push_back(current->pre_page);
+            temp_root->ptr.push_back(current);
+            current->pre_page->parent = temp_root;
+            current->parent = temp_root;
+            root = temp_root;
+
+        } else {
+
+            current->parent = current->pre_page->parent;
+            parent = dynamic_cast<index_page*>(current->parent);
+            parent->push_up(current, this);
+        }
+
+        if (current != root && current->key.size() < page_size/2){
+            cout << "underflow! leaf page key size: " <<  current->key.size() << endl;
+            current->underflow(this);
+        }
+            
+        current = dynamic_cast<leaf_page*>(current->next_page);
+    }
+    cout << "BulkLoading Success!" << endl;
+}
+
 
 
 
 Btree::page::page()
 {
-   // page_size = 4;
     parent = nullptr;
     pre_page = nullptr;
     next_page = nullptr;
@@ -381,6 +463,9 @@ Btree::page::show()
 }
 
 
+
+
+
 Btree::index_page::index_page()
 {
     page_type = "index";
@@ -409,13 +494,22 @@ Btree::index_page::~index_page()
     }
 }
 
+int Btree::index_page::key_index_between_ptr(page* x_page, page* y_page)
+{
+    for(int i=0 ; i<key.size() ; i++){
+        if ((ptr[i] == x_page && ptr[i+1] == y_page) || (ptr[i] == y_page && ptr[i+1] == x_page))
+            return i;
+    }
+    cout << "Error! No key value between given pointer\n" << endl;
+    return -1;
+}
 
-Btree::index_page::push_up(page* new_page, int push_key, Btree* btree)
+Btree::index_page::push_up(page* new_page, Btree* btree)
 {
     int page_size = btree->page_size;
     index_page *myparent = dynamic_cast<index_page*>(parent);  // 將父節點轉換成路標節點型態
 
-    int position = push(push_key); // 將key放入此路標節點，並回傳放入的index
+    int position = push(new_page->key[0]); // 將key放入此路標節點，並回傳放入的index
     vector<page*>::iterator itr = ptr.begin();
     itr = ptr.insert(itr + position + 1, new_page); // 將子節點的pointer 放入適當的位置
 
@@ -481,7 +575,7 @@ Btree::index_page::push_up(page* new_page, int push_key, Btree* btree)
                 btree->root = temp_root;
 
             } else { // 上層有父節點 //
-                myparent->push_up(temp, temp->key[0], btree);
+                myparent->push_up(temp, btree);
             }
             temp->key.erase(temp->key.begin(), temp->key.begin()+1); // 移除新增節點的第一個key 因為被往上移了
         }
@@ -611,15 +705,6 @@ Btree::index_page::pop_down(page* empty_page, page* merge_page, Btree* btree)
     }
 }
 
-int Btree::index_page::key_index_between_ptr(page* x_page, page* y_page)
-{
-    for(int i=0 ; i<key.size() ; i++){
-        if ((ptr[i] == x_page && ptr[i+1] == y_page) || (ptr[i] == y_page && ptr[i+1] == x_page))
-            return i;
-    }
-    cout << "Error! No key value between given pointer\n" << endl;
-    return -1;
-}
 
 
 
@@ -709,7 +794,7 @@ Btree::leaf_page::overflow(Btree* btree)
             btree->root = temp_root;
 
         } else {  // 具有父節點 //
-            myparent->push_up(temp, temp->key[0], btree);
+            myparent->push_up(temp, btree);
         }
     }
 }
