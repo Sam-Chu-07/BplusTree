@@ -37,8 +37,8 @@ class Btree
 
         BulkLoading();
 
-        string Attach();
-       
+        bool Attach();
+        
         int get_order(){return page_size/2;}
 
     private:
@@ -79,7 +79,7 @@ class Btree
                 int key_index_between_ptr(page* x_page, page* y_page);
                 display();
                 mydisplay(string &pattern);
-                push_up(page* new_page, Btree* btree);
+                push_up(page* new_page, int push_key, Btree* btree);
                 pop_down(page* empty_page, page* merge_page, Btree* btree);
                 
         };
@@ -115,8 +115,8 @@ int main()
     char str[1000];
     string attach_pattern;
     bool quit = false;
-    Btree *current_tree = nullptr;
-    vector<Btree*> Tree;
+    Btree *tree = nullptr, *temp_tree = nullptr;
+
     
     while(quit == false)
     {
@@ -125,7 +125,7 @@ int main()
         cout << "(5) Insert     (6) Delete (7) Display  (8) Quit" << endl;
         cout << "Select an operation: ";
         cin >> input;
-        if (current_tree == nullptr && input != 1 && input != 8){
+        if (tree == nullptr && input != 1 && input != 8){
             cout << "Error ! You should initialize a B+ tree first" << endl;
             continue;
         }
@@ -136,9 +136,7 @@ int main()
                 cout << "Initializing order = ";
                 cin >> order;
                 if (order > 0){
-                    current_tree = new Btree(order);
-                    if (find(Tree.begin(), Tree.end(), current_tree) == Tree.end())
-                        Tree.push_back(current_tree);
+                    tree = new Btree(order);
                     cout << "Success create a B+ tree with order " << order << endl;
                 } else {
                     cout << "Error ! order of tree should be a positive integer" << endl;
@@ -148,46 +146,46 @@ int main()
             case 2:
                 cout << "Attaching order = ";
                 cin >> order;
-                cout << "Nodes in inorder-like traversal: ";
-                fflush(stdin);
-                cin.getline(str, 1000);
-                attach_pattern = str;
-                for(int i=0 ; i<Tree.size() ; i++){
-                    if (Tree[i]->get_order() == order && Tree[i]->Attach() == attach_pattern){
-                        current_tree = Tree[i];
-                        cout << "Attach Success !" << endl;
-                        break;
+                if (order > 0){
+                    temp_tree = new Btree(order);
+                    if (temp_tree->Attach()){
+                        delete tree;
+                        tree = temp_tree;
+                        cout << "Attaching Success! create a B+ tree with order "<< order << endl;
+                    }else{
+                        delete temp_tree;
+                        cout << "Attaching Fail!" << endl;
                     }
-                    if (i == Tree.size()-1)
-                        cout << "Attach Fail !" << endl;
+                } else {
+                    cout << "Error ! order of tree should be a positive integer" << endl;
                 }
                 break;
 
             case 3:
-                current_tree->BulkLoading();
+                tree->BulkLoading();
                 break;
 
             case 4:
                 cout << "Look up key = ";
                 cin >> input;
-                current_tree->Lookup(input);
+                tree->Lookup(input);
                 break;
 
             case 5:
                 cout << "Insert key = ";
                 cin >> input;
-                current_tree->Insert(input);
+                tree->Insert(input);
                 break;
 
             case 6:
                 cout << "Delete key = ";
                 cin >> input;
-                current_tree->Delete(input);
+                tree->Delete(input);
                 break;
 
             case 7:
-                current_tree->MyDisplay();
-                current_tree->Display();
+                tree->MyDisplay();
+                tree->Display();
                 cout << endl;
                 break;
                 
@@ -196,9 +194,6 @@ int main()
                 break;
 
             default:
-                cout << "There are " << Tree.size() << " B+ Tree" << endl;
-                for (int i=0 ; i<Tree.size() ; i++)
-                    cout << "<" << i+1 << "> Tree:" << Tree[i]->Attach() << endl;
                 break;
         }
     }
@@ -240,11 +235,15 @@ Btree::Display()
 // 圖形化顯示整棵 B+ Tree //
 Btree::MyDisplay()
 {
-    string pattern;
-    cout << "\n";
-    root->mydisplay(pattern);
-    vertical_tree(pattern);
-    cout << endl;
+    if (root == nullptr){
+        //cout << "Empty Tree";  
+    } else {
+        string pattern;
+        cout << "\n";
+        root->mydisplay(pattern);
+        vertical_tree(pattern);
+        cout << endl;
+    }
 }
 
 // 插入一個使用者輸入的數值 //
@@ -270,7 +269,7 @@ Btree::Insert(int value)
             leaf->push(value); // 對資料節點塞入 使用者輸入的值
             if (leaf->key.size() > page_size){ // 檢查是否超過資料節點的容量
 
-                cout << "\noverflow ! Leaf page size: " << current->key.size() << "\n" <<endl;
+                //<Debug> cout << "\noverflow ! Leaf page size: " << current->key.size() << "\n" <<endl;
                 leaf->overflow(this);  // 處理該資料節點的overflow
             }
             break;
@@ -328,7 +327,7 @@ Btree::Delete(int value)
 
             } else if (leaf != root && leaf->key.size() < page_size/2){ // 檢查資料節點是否剩餘過多空間
 
-                cout << "\nunderflow ! Leaf page size: " << leaf->key.size() << "\n" <<endl;
+                //<Debug> cout << "\nunderflow ! Leaf page size: " << leaf->key.size() << "\n" <<endl;
                 leaf->underflow(this);
             }
             break; // 結束 Underflow 檢查與處理
@@ -357,7 +356,6 @@ Btree::Delete(int value)
 // 在 B+ Tree 中搜尋使用者輸入的數值 //
 Btree::Lookup(int value)
 {
-    cout << "Try to Look up value: " << value << endl;
     int position;
     page *current = root;  // 從根節點往下搜尋
     index_page *index;
@@ -367,16 +365,16 @@ Btree::Lookup(int value)
     {
         if (current == nullptr){  // 此樹還未建立任何節點
 
-            cout << "false" << endl;
+            cout << "\nfalse" << endl;
 
         } else if (current->page_type == "leaf"){ // 目前為資料節點
             
             leaf_page *leaf = dynamic_cast<leaf_page*>(current);
             itr = find(leaf->key.begin(), leaf->key.end(), value);
             if (itr != leaf->key.end())
-                cout << "true" << endl;
+                cout << "\ntrue" << endl;
             else
-                cout << "false" << endl;
+                cout << "\nfalse" << endl;
             break;
 
         } else if (current->page_type == "index"){ // 目前為路標節點
@@ -445,7 +443,7 @@ Btree::BulkLoading()
 
         } else if (current->pre_page->parent == nullptr){
 
-            cout << "Create new root page" << endl;
+            //<Debug> cout << "Create new root page" << endl;
             index_page *temp_root = new index_page;
             temp_root->push(current->key[0]);
             temp_root->ptr.push_back(current->pre_page);
@@ -458,11 +456,11 @@ Btree::BulkLoading()
 
             current->parent = current->pre_page->parent;
             parent = dynamic_cast<index_page*>(current->parent);
-            parent->push_up(current, this);
+            parent->push_up(current, current->key[0], this);
         }
 
         if (current != root && current->key.size() < page_size/2){
-            cout << "underflow! leaf page key size: " <<  current->key.size() << endl;
+            //<Debug> cout << "underflow! leaf page key size: " <<  current->key.size() << endl;
             current->underflow(this);
         }
             
@@ -471,18 +469,94 @@ Btree::BulkLoading()
     cout << "BulkLoading Success!" << endl;
 }
 
-// 回傳B+ Tree 的 各個節點的key //
-string Btree::Attach()
+// 直接建立一個已存在的 B+ Tree //
+bool Btree::Attach()
 {
-    /*
-    if (root == nullptr){
-        return "\0";
-    } else {
-        string pattern;
-        root->attach(pattern);
-        return pattern;
+    int count = 0, push_key;
+    char input[1000];
+    char *ppage, *pch;
+    list<int> array;
+    list<char*> page;
+    leaf_page *current = nullptr, *temp = nullptr, *start = nullptr;
+    index_page *parent;
+
+    cout << "Nodes in inorder-like traversal = ";
+    fflush(stdin);
+    cin.getline(input, 1000);
+
+    ppage = strtok(input, ";");
+    while (ppage != NULL)
+    {
+        page.push_back(ppage);
+        ppage = strtok (NULL, ";");
     }
-    */
+
+    if (page.size() == 0){
+        return true;
+    }else if (page.size() % 2 == 0){
+        cout << "Error ! Not a legal inorder-like sequence of B+ tree!" << endl; 
+        return false;
+    }
+
+    while(!page.empty()){
+
+        if (root == nullptr){
+
+            current = new leaf_page;
+            
+        } else {
+
+            string_to_int_array(page.front(), array);
+            if (array.size() != 1){
+                cout << "Error ! Not a legal inorder-like sequence of B+ tree" << endl;
+                cout << "Index Page representation error!" << endl;
+                return false;
+            }
+            push_key = array.front();
+            page.pop_front();
+
+            temp = new leaf_page;
+            current->next_page = temp;
+            temp->pre_page = current;
+            current = temp;  
+        }
+
+        string_to_int_array(page.front(), array);
+        page.pop_front();
+
+        if(array.size() > page_size || array.size() < page_size/2){
+            cout << "Error ! Not a legal inorder-like sequence of B+ tree" << endl;
+            cout << "Leaf Page size not legal!" << endl;
+            delete current;
+            return false;
+        }
+        while(!array.empty()){
+            current->key.push_back(array.front());
+            array.pop_front(); 
+        }
+
+        if (root == nullptr){
+
+            root = current;
+
+        } else if (current->pre_page != nullptr && current->pre_page->parent == nullptr){
+            
+            index_page *temp_root = new index_page;
+            temp_root->push(push_key);
+            temp_root->ptr.push_back(current->pre_page);
+            temp_root->ptr.push_back(current);
+            current->pre_page->parent = temp_root;
+            current->parent = temp_root;
+            root = temp_root;
+
+        } else {
+
+            current->parent = current->pre_page->parent;
+            parent = dynamic_cast<index_page*>(current->parent);
+            parent->push_up(current, push_key, this);
+        }
+    }
+    return true;
 }
 
 
@@ -526,7 +600,7 @@ int Btree::page::pop(int value)
 Btree::index_page::index_page()
 {
     page_type = "index";
-    cout << "Create a Index Page" << endl;
+    //<Debug>cout << "Create a Index Page" << endl;
 }
 
 Btree::index_page::~index_page()
@@ -566,23 +640,23 @@ Btree::index_page::mydisplay(string &pattern)
     }
 }
 
-Btree::index_page::push_up(page* new_page, Btree* btree)
+Btree::index_page::push_up(page* new_page, int push_key, Btree* btree)
 {
     int page_size = btree->page_size;
     index_page *myparent = dynamic_cast<index_page*>(parent);  // 將父節點轉換成路標節點型態
 
-    int position = push(new_page->key[0]); // 將key放入此路標節點，並回傳放入的index
+    int position = push(push_key); // 將key放入此路標節點，並回傳放入的index
     vector<page*>::iterator itr = ptr.begin();
     itr = ptr.insert(itr + position + 1, new_page); // 將子節點的pointer 放入適當的位置
 
     if (key.size() > page_size){ // 檢查此節點是否超過容量
 
-        cout << "\noverflow ! Index page size: " << key.size() << "\n" <<endl;
+        //<Debug> cout << "\noverflow ! Index page size: " << key.size() << "\n" <<endl;
 
         if (pre_page != nullptr && pre_page->parent == parent && pre_page->key.size() < page_size){
 
-            cout << "Left index page is sibling" <<  endl;
-            cout << "throw a key and a pointer to left index page" << endl;
+            //<Debug> cout << "Left index page is sibling" <<  endl;
+            //<Debug> cout << "throw a key and a pointer to left index page" << endl;
             index_page *left_page = dynamic_cast<index_page*>(pre_page);
 
             position = myparent->key_index_between_ptr(left_page, this);  // 取得父節點中 兩指標間key的index
@@ -596,8 +670,8 @@ Btree::index_page::push_up(page* new_page, Btree* btree)
         // 判斷右節點存在且為兄弟 並且有空間可以多塞一個key //
         } else if (next_page != nullptr && next_page->parent == parent && next_page->key.size() < page_size){
 
-            cout << "Right leaf page is sibling" <<  endl;
-            cout << "throw a key to right leaf page" << endl;
+            //<Debug>cout << "Right leaf page is sibling" <<  endl;
+            //<Debug>cout << "throw a key to right leaf page" << endl;
             index_page *right_page = dynamic_cast<index_page*>(next_page);
 
             position = myparent->key_index_between_ptr(this, right_page);             // 取得父節點中 兩指標間key的index
@@ -627,7 +701,7 @@ Btree::index_page::push_up(page* new_page, Btree* btree)
             
             if (myparent == nullptr){ // 本身為root層 需新增起始節點 //
 
-                cout << "Create new root page" << endl;
+                //<Debug>cout << "Create new root page" << endl;
                 index_page *temp_root = new index_page;
                 temp_root->push(temp->key[0]);
                 temp_root->ptr.push_back(this);
@@ -637,7 +711,7 @@ Btree::index_page::push_up(page* new_page, Btree* btree)
                 btree->root = temp_root;
 
             } else { // 上層有父節點 //
-                myparent->push_up(temp, btree);
+                myparent->push_up(temp, temp->key[0], btree);
             }
             temp->key.erase(temp->key.begin(), temp->key.begin()+1); // 移除新增節點的第一個key 因為被往上移了
         }
@@ -668,29 +742,30 @@ Btree::index_page::pop_down(page* empty_page, page* merge_page, Btree* btree)
 
     if (this == btree->root && key.size() == 0){ // 自己為根節點(Root) 且 已經沒有key了
         
-        cout << "Root Page key size: 0, pointer size: " << ptr.size() << endl;
-        cout << "Delete current Root Page!\n" << endl;
+        //<Debug>cout << "Root Page key size: 0, pointer size: " << ptr.size() << endl;
+        //<Debug>cout << "Delete current Root Page!\n" << endl;
         if (ptr[0] != merge_page)
             cout << "Error! remain pointer in root not point to the merge page\n" << endl;
         btree->root = merge_page;      // 根節點為合併節點
         merge_page->parent = nullptr;  // 設定合併節點的父節點指標 為 NULL
+        ptr.front() = nullptr;         // 原本的根節點會剩下一個pointer 一定要用null取代
         delete this;                   // 刪除舊的根節點空間
 
     } else if (key.size() < page_size/2){ // 自己剩餘太多空間
 
-        cout << "\nunderflow ! Index page size: " << key.size() << "\n" <<endl;
+        //<Debug>cout << "\nunderflow ! Index page size: " << key.size() << "\n" <<endl;
         index_page *myparent = dynamic_cast<index_page*>(parent);
 
         // 判斷左節點是否為兄弟 且不為 NULL //
         if (pre_page != nullptr && pre_page->parent == parent){
             
-            cout << "Left index page is sibling" <<  endl;
+            //<Debug>cout << "Left index page is sibling" <<  endl;
             index_page *left_page = dynamic_cast<index_page*>(pre_page);
 
             // 可以向左節點借一個key 和一個 pointer //
             if (left_page->key.size() > page_size/2){
 
-                cout << "borrow a key and a pointer fom left index page" << endl;
+                //<Debug>cout << "borrow a key and a pointer fom left index page" << endl;
                 position = myparent->key_index_between_ptr(this, left_page); // 取得父節點中 兩指標間key的index
                 key.insert(key.begin(), myparent->key[position]); // 將父節點中 兩指標間key值 插入自己的第一個key位置
                 ptr.insert(ptr.begin(), left_page->ptr.back());   // 將左節點的最後一個pointer 插入自己的第一個ptr位置
@@ -703,7 +778,7 @@ Btree::index_page::pop_down(page* empty_page, page* merge_page, Btree* btree)
             // 無法向左節點借一個key 且 右節點為NULL或不為兄弟  因此只能向左做合併 //
             } else if (next_page == nullptr || next_page->parent != parent){
 
-                cout << "merge to left index page" << endl;
+                //<Debug>cout << "merge to left index page" << endl;
 
                 position = myparent->key_index_between_ptr(this, left_page); // 取得父節點中 自己的指標與左節點指標間的key位置
                 left_page->key.push_back(myparent->key[position]);           // 在左節點最後面 放入 父節點中自己的指標與左節點指標間的key
@@ -728,13 +803,13 @@ Btree::index_page::pop_down(page* empty_page, page* merge_page, Btree* btree)
         // 判斷右節點是否為兄弟 且 不為 null //
         if (next_page != nullptr && next_page->parent == parent){
 
-            cout << "Right index page is sibling" << endl;
+            //<Debug>cout << "Right index page is sibling" << endl;
             index_page *right_page = dynamic_cast<index_page*>(next_page);
 
             // 可以向右節點借一個key 和一個 pointer //
             if (right_page->key.size() > page_size/2){    
                 
-                cout << "borrow a key and a pointer fom right index page" << endl;
+                //<Debug>cout << "borrow a key and a pointer fom right index page" << endl;
                 position = myparent->key_index_between_ptr(this, right_page); // 取得父節點中 兩指標間key的index
                 key.push_back(myparent->key[position]);                       // 將父節點中 兩指標間key值 放入自己最後一個key位置
                 ptr.push_back(right_page->ptr[0]);                            // 將右節點的第一個pointer  放入自己最後一個ptr位置
@@ -745,7 +820,7 @@ Btree::index_page::pop_down(page* empty_page, page* merge_page, Btree* btree)
             
             } else {  // 無法向右節點借一個key 因此只能向右做合併 //
 
-                cout << "merge to right index page" << endl;
+                //<Debug> cout << "merge to right index page" << endl;
                 position = myparent->key_index_between_ptr(this, right_page);             // 取得父節點中 自己的指標與右節點指標間的key位置
                 right_page->key.insert(right_page->key.begin(), myparent->key[position]); // 在右節點最前面 插入 父節點中自己的指標與右節點指標間的key
 
@@ -774,14 +849,14 @@ Btree::index_page::pop_down(page* empty_page, page* merge_page, Btree* btree)
 Btree::leaf_page::leaf_page()
 {
     page_type = "leaf";
-    cout << "Create a Leaf Page" << endl;
+    //<Debug> cout << "Create a Leaf Page" << endl;
 }
 
 Btree::leaf_page::~leaf_page()
 {
     cout << "Removing leaf page { ";
     for(int i=0 ; i<key.size() ; i++){
-        cout << key[i] << " " << endl;
+        cout << key[i] << " ";
     }
     cout << " }" << endl;
 }
@@ -817,8 +892,8 @@ Btree::leaf_page::overflow(Btree* btree)
     // 判斷左節點存在且為兄弟 並且有空間可以多塞一個key //
     if (pre_page != nullptr && pre_page->parent == parent && pre_page->key.size() < page_size){
 
-        cout << "Left leaf page is sibling" <<  endl;
-        cout << "throw a key to left leaf page" << endl;
+        //<Debug>cout << "Left leaf page is sibling" <<  endl;
+        //<Debug>cout << "throw a key to left leaf page" << endl;
         leaf_page *left_page = dynamic_cast<leaf_page*>(pre_page);
 
         left_page->key.push_back(key[0]);       // 將自己的第一個key 放入 左節點的最後面
@@ -829,8 +904,8 @@ Btree::leaf_page::overflow(Btree* btree)
     // 判斷右節點存在且為兄弟 並且有空間可以多塞一個key //
     } else if (next_page != nullptr && next_page->parent == parent && next_page->key.size() < page_size){
 
-        cout << "Right leaf page is sibling" <<  endl;
-        cout << "throw a key to right leaf page" << endl;
+        //<Debug>cout << "Right leaf page is sibling" <<  endl;
+        //<Debug>cout << "throw a key to right leaf page" << endl;
         leaf_page *right_page = dynamic_cast<leaf_page*>(next_page);
 
         right_page->key.insert(right_page->key.begin(), key.back()); // 將自己的最後面的key 放入 右節點的第一個位置
@@ -854,7 +929,7 @@ Btree::leaf_page::overflow(Btree* btree)
         // 無父節點 本身就是root層 需新增起始節點 //
         if (myparent == nullptr){        
 
-            cout << "Create new root page" << endl;
+            //<Debug>cout << "Create new root page" << endl;
             index_page *temp_root = new index_page;
             temp_root->push(temp->key[0]);
             temp_root->ptr.push_back(this);
@@ -864,7 +939,7 @@ Btree::leaf_page::overflow(Btree* btree)
             btree->root = temp_root;
 
         } else {  // 具有父節點 //
-            myparent->push_up(temp, btree);
+            myparent->push_up(temp, temp->key[0], btree);
         }
     }
 }
@@ -879,13 +954,13 @@ Btree::leaf_page::underflow(Btree* btree)
     // 判斷左節點是否為兄弟 且不為 NULL //
     if (pre_page != nullptr && pre_page->parent == parent){
 
-        cout << "Left leaf page is sibling" <<  endl;
+        //<Debug>cout << "Left leaf page is sibling" <<  endl;
         leaf_page *left_page = dynamic_cast<leaf_page*>(pre_page);
         
         // 可以向左節點借一個key //
         if (left_page->key.size() > page_size/2){
             
-            cout << "borrow a key fom left leaf page" << endl;
+            //<Debug>cout << "borrow a key fom left leaf page" << endl;
             key.insert(key.begin(), left_page->key.back()); // 將左節點的最後一個key 放入此資料節點的第一個位置
             left_page->key.pop_back();                      // 移除左節點最後一個key
             position = myparent->key_index_between_ptr(left_page, this);
@@ -895,7 +970,7 @@ Btree::leaf_page::underflow(Btree* btree)
         // 無法向左節點借一個key 且 右節點為NULL或不為兄弟  //
         } else if (next_page == nullptr || next_page->parent != parent){
             
-            cout << "merge to left leaf page" << endl;
+            //<Debug>cout << "merge to left leaf page" << endl;
 
             // 將這個資料節點內所有的key都丟到左節點 //
             for( ; key.size() > 0 ; ){                  
@@ -910,13 +985,13 @@ Btree::leaf_page::underflow(Btree* btree)
     // 判斷右節點是否為兄弟 且 不為 null //
     if (next_page != nullptr && next_page->parent == parent){ 
         
-        cout << "Right leaf page is sibling" << endl;
+        //<Debug>cout << "Right leaf page is sibling" << endl;
         leaf_page *right_page = dynamic_cast<leaf_page*>(next_page);
 
         // 可以向右節點借一個key //
         if (right_page->key.size() > page_size/2){    
             
-            cout << "borrow a key fom right leaf page" << endl;
+            //<Debug>cout << "borrow a key fom right leaf page" << endl;
             key.push_back(right_page->key[0]);  // 將右節點的第一個key 放入此節點中
             right_page->key.erase(right_page->key.begin(), right_page->key.begin()+1); // 移除右節點第一個key
             position = myparent->key_index_between_ptr(this, right_page);
@@ -924,7 +999,7 @@ Btree::leaf_page::underflow(Btree* btree)
         
         } else {  // 無法向右節點借一個key 因此只能向右做合併 //
 
-            cout << "merge to right leaf page" << endl;
+            //<Debug>cout << "merge to right leaf page" << endl;
 
             // 將這個資料節點內所有的key都丟到右節點 //
             for( itr = right_page->key.begin() ; key.size() > 0 ; ){
@@ -938,11 +1013,9 @@ Btree::leaf_page::underflow(Btree* btree)
 
 
 
-
-
-
 void string_to_int_array(char *str, list<int> &array)
 {
+    array.clear();
     char *pch;
     pch = strtok(str, " ");
     while (pch != NULL)
@@ -957,11 +1030,29 @@ void nspace(int n){
 		cout << " ";
 }
 
+void brackets(list<int> &up, list<int> &down)
+{
+    auto j = down.begin();
+    for(auto i = up.begin() ; i != up.end() ; i++){
+        for( ; j != down.end() ; j++){
+            if (*j >= *i){
+                j = down.insert(j, -9909);
+                j++;
+                j = down.insert(j, -9099);
+                j++;
+                break;
+            }
+        }
+    }
+    down.push_front(-9099);
+    down.push_back(-9909);
+}
+
 void vertical_tree(string str)
 {
-	queue<int> level[11];
+	list<int> level[11];
     map<int, int> space;
-    int num, height, i=0;
+    int num, height, pre_height = -1, i = 0;
 	string str_seq = "{ ";
 	
     while(i<str.size()){
@@ -985,20 +1076,44 @@ void vertical_tree(string str)
 			i = str.find_first_of('|' , i) + 1;
 
 			height = stoi(&str[i]);
-			level[height].push(num);
+			level[height].push_back(num);
 			i = str.find_first_of(';' , i) + 1;
 		}
     }
 	
 	int prespace;
+    for(int j=10 ; j > 0 ; j--){
+        if (!level[j].empty()){
+            brackets(level[j-1], level[j]);
+        }
+    }
+    if(!level[0].empty()){
+        level[0].push_front(-9099);
+        level[0].push_back(-9909);
+    }
+
 	for(int j=0 ; j<11 ; j++){
 		prespace = 0;
-		for(int k; !level[j].empty() ; level[j].pop()){
-			k=level[j].front();
-			nspace(space[k] - prespace);
-			prespace =space[k] + (to_string(k).size());
-			cout << k;
+		for(int k; !level[j].empty() ; level[j].pop_front()){
+			k = level[j].front();
+            if(k == -9099){
+                level[j].pop_front();
+                k = level[j].front();
+                nspace(space[k] - prespace - 2);
+                cout << "[ ";
+                prespace = space[k] + (to_string(k).size());
+                cout << k;
+            } else if (k == -9909){
+                cout << " ]";
+                prespace += 2;
+            } else {
+                nspace(space[k] - prespace);
+                prespace = space[k] + (to_string(k).size());
+                cout << k;
+            }
+            
 		}
+
 		cout << endl << endl;
 		if (level[j+1].empty())
 			break;
