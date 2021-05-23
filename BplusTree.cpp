@@ -1,6 +1,8 @@
 #include <iostream>
 #include <algorithm>
 #include <vector>
+#include <queue>
+#include <map>
 #include <list>
 #include <string>
 #include <cstring>
@@ -8,16 +10,9 @@ using namespace std;
 
 int level;  // debug 用
 
-string_to_int_array(char *str, list<int> &array){
+void string_to_int_array(char *str, list<int> &array);
 
-    char *pch;
-    pch = strtok(str, " ");
-    while (pch != NULL)
-    {
-        array.push_back(atoi(pch));
-        pch = strtok (NULL, " ");
-    }      
-}
+void vertical_tree(string str);
 
 
 // --------------------------------------------------------- //
@@ -31,6 +26,8 @@ class Btree
         ~Btree();
         
         Display();
+
+        MyDisplay();
 
         Insert(int value);
 
@@ -64,7 +61,7 @@ class Btree
                 int pop(int value);
                 
                 virtual display(){}
-                virtual mydisplay(){}
+                virtual mydisplay(string &pattern){}
                 virtual attach(string &pattern){}
         };
 
@@ -81,8 +78,7 @@ class Btree
                 
                 int key_index_between_ptr(page* x_page, page* y_page);
                 display();
-                mydisplay();
-                attach(string &pattern);
+                mydisplay(string &pattern);
                 push_up(page* new_page, Btree* btree);
                 pop_down(page* empty_page, page* merge_page, Btree* btree);
                 
@@ -98,13 +94,13 @@ class Btree
                 ~leaf_page();
 
                 display();
-                mydisplay();
-                attach(string &pattern);
+                mydisplay(string &pattern);
                 overflow(Btree* btree);
                 underflow(Btree* btree);
         };
 
         page *root;
+    
 };
 
 
@@ -178,10 +174,9 @@ int main()
                 break;
 
             case 5:
-                cout << "Insert key = " << endl;
+                cout << "Insert key = ";
                 cin >> input;
                 current_tree->Insert(input);
-                cin >> input;
                 break;
 
             case 6:
@@ -191,6 +186,7 @@ int main()
                 break;
 
             case 7:
+                current_tree->MyDisplay();
                 current_tree->Display();
                 cout << endl;
                 break;
@@ -208,6 +204,7 @@ int main()
     }
     return 0;
 }
+
 
 
 // ################################################# //
@@ -231,12 +228,23 @@ Btree::~Btree()
 // 遞迴顯示整棵 B+ Tree //
 Btree::Display()
 {
-    level = 0; 
     if (root == nullptr){
         cout << "Empty Tree";  
     } else {
+        level = 0; 
+        cout << "Nodes in inorder-like traversal:\n";
         root->display();
     }
+}
+
+// 圖形化顯示整棵 B+ Tree //
+Btree::MyDisplay()
+{
+    string pattern;
+    cout << "\n";
+    root->mydisplay(pattern);
+    vertical_tree(pattern);
+    cout << endl;
 }
 
 // 插入一個使用者輸入的數值 //
@@ -466,6 +474,7 @@ Btree::BulkLoading()
 // 回傳B+ Tree 的 各個節點的key //
 string Btree::Attach()
 {
+    /*
     if (root == nullptr){
         return "\0";
     } else {
@@ -473,6 +482,7 @@ string Btree::Attach()
         root->attach(pattern);
         return pattern;
     }
+    */
 }
 
 
@@ -545,25 +555,14 @@ Btree::index_page::display()
     }
 }
 
-Btree::index_page::mydisplay()
+Btree::index_page::mydisplay(string &pattern)
 {
     for(int i=0 ; i<ptr.size(); i++){
         level ++;
-        ptr[i]->mydisplay();
+        ptr[i]->mydisplay(pattern);
         level --;
         if(i<key.size())
-            cout << key[i] << "(" << level << ") ; ";
-    }
-}
-
-Btree::index_page::attach(string &pattern)
-{
-    for(int i=0 ; i<ptr.size(); i++){
-        ptr[i]->attach(pattern);
-        if(i<key.size()){
-            pattern += to_string(key[i]);
-            pattern += " ; ";
-        }
+            pattern += (to_string( key[i]) + "|" + to_string(level) + ";");
     }
 }
 
@@ -798,17 +797,7 @@ Btree::leaf_page::display()
         cout << " ; ";
 }
 
-Btree::leaf_page::mydisplay()
-{
-    cout << "{ ";
-    for(int i=0 ; i<key.size() ; i++)
-        cout << key[i] << " ";
-    cout << "}" ;
-    if (next_page != nullptr)
-        cout << " ; ";
-}
-
-Btree::leaf_page::attach(string &pattern)
+Btree::leaf_page::mydisplay(string &pattern)
 {
     for(int i=0 ; i<key.size() ; i++){
         pattern += to_string(key[i]);
@@ -816,7 +805,7 @@ Btree::leaf_page::attach(string &pattern)
             pattern += " ";
     }
     if (next_page != nullptr)
-        pattern += " ; ";
+        pattern += " ;";
 }
 
 Btree::leaf_page::overflow(Btree* btree)
@@ -945,4 +934,74 @@ Btree::leaf_page::underflow(Btree* btree)
              myparent->pop_down(this, right_page, btree);
         }
     } else {cout << "Error! No sibling in this Leaf page\n" << endl;}
+}
+
+
+
+
+
+
+void string_to_int_array(char *str, list<int> &array)
+{
+    char *pch;
+    pch = strtok(str, " ");
+    while (pch != NULL)
+    {
+        array.push_back(atoi(pch));
+        pch = strtok (NULL, " ");
+    }      
+}
+
+void nspace(int n){
+	for(int i=0 ; i<n ; i++)
+		cout << " ";
+}
+
+void vertical_tree(string str)
+{
+	queue<int> level[11];
+    map<int, int> space;
+    int num, height, i=0;
+	string str_seq = "{ ";
+	
+    while(i<str.size()){
+		num = stoi(&str[i]);
+		str_seq += (to_string(num) + " ");
+		i = str.find_first_of(' ' , i);
+
+		if (i == str.npos)
+			{str_seq += "}"; break;}
+		else
+			i++;
+
+		if (str[i] == ';'){
+			str_seq += "} ";
+			num = stoi(&str[++i]);
+			space.insert(pair<int, int>(num, str_seq.size()));
+
+			for(int j=0 ; j<(int)to_string(num).size(); j++)
+				str_seq += " ";
+			str_seq += " { ";
+			i = str.find_first_of('|' , i) + 1;
+
+			height = stoi(&str[i]);
+			level[height].push(num);
+			i = str.find_first_of(';' , i) + 1;
+		}
+    }
+	
+	int prespace;
+	for(int j=0 ; j<11 ; j++){
+		prespace = 0;
+		for(int k; !level[j].empty() ; level[j].pop()){
+			k=level[j].front();
+			nspace(space[k] - prespace);
+			prespace =space[k] + (to_string(k).size());
+			cout << k;
+		}
+		cout << endl << endl;
+		if (level[j+1].empty())
+			break;
+	}
+	cout << str_seq << "\n" << endl;
 }
